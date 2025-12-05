@@ -9,7 +9,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      # 1. 코드 가져오기 (v4 사용)
+      # 1. 코드 가져오기
       - uses: actions/checkout@v4
 
       # 2. 파이썬 설치
@@ -25,7 +25,7 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      # 4. 플러터 설치 (Flet의 핵심 엔진)
+      # 4. 플러터 설치
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
@@ -37,14 +37,14 @@ jobs:
           pip install -r requirements.txt
           pip install flet
 
-      # 6. APK 빌드 명령 (가장 중요)
+      # 6. APK 빌드 명령 (성공했다고 가정)
       - name: Flet Build APK
         run: |
           flet build apk --verbose
 
-      # 7. 결과물 업로드 (v4 사용 - 에러 해결)
+      # 7. [수정됨] 결과물 업로드 (와일드카드 사용으로 이름 달라도 찾도록 함)
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: MyPriceApp
-          path: build/app/outputs/flutter-apk/app-release.apk
+          path: build/app/outputs/flutter-apk/*.apk  # <-- *.apk 로 수정
