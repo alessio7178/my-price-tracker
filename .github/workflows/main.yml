@@ -1,30 +1,50 @@
 name: Build APK
 
-on: [push]
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
-    
-    - name: Setup Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.11'
-        
-    - name: Install Dependencies
-      run: |
-        pip install -r requirements.txt
-        
-    - name: Build APK
-      uses: flet-dev/flet-action@v1
-      with:
-        target: android
-        main: main.py
-        
-    - name: Upload APK
-      uses: actions/upload-artifact@v3
-      with:
-        name: MyPriceApp
-        path: build/app/outputs/flutter-apk/app-release.apk
+      # 1. 코드 가져오기 (v4 사용)
+      - uses: actions/checkout@v4
+
+      # 2. 파이썬 설치
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # 3. 자바 설치 (안드로이드 빌드 필수)
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      # 4. 플러터 설치 (Flet의 핵심 엔진)
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+
+      # 5. 라이브러리 설치
+      - name: Install Dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install flet
+
+      # 6. APK 빌드 명령 (가장 중요)
+      - name: Flet Build APK
+        run: |
+          flet build apk --verbose
+
+      # 7. 결과물 업로드 (v4 사용 - 에러 해결)
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: MyPriceApp
+          path: build/app/outputs/flutter-apk/app-release.apk
