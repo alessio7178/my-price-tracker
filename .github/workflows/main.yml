@@ -31,20 +31,32 @@ jobs:
         with:
           channel: 'stable'
 
-      # 5. 라이브러리 설치
+      # 5. [핵심 수정] 안드로이드 라이선스 자동 동의
+      - name: Accept Android licenses
+        run: |
+          yes | flutter doctor --android-licenses
+          
+      # 6. 라이브러리 설치
       - name: Install Dependencies
         run: |
           pip install -r requirements.txt
           pip install flet
 
-      # 6. APK 빌드 명령 (성공했다고 가정)
+      # 7. APK 빌드 명령
       - name: Flet Build APK
         run: |
           flet build apk --verbose
 
-      # 7. [수정됨] 결과물 업로드 (와일드카드 사용으로 이름 달라도 찾도록 함)
+      # 8. [핵심 수정] APK 파일 찾아서 복사
+      - name: Copy APK to artifacts folder
+        run: |
+          mkdir -p artifacts
+          # find 명령어를 사용하여 build 폴더 내의 모든 APK 파일을 artifacts 폴더로 복사합니다.
+          find build/app/outputs/flutter-apk -name "*.apk" -exec cp {} artifacts/ \;
+
+      # 9. 결과물 업로드 (안정적인 경로 사용)
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: MyPriceApp
-          path: build/app/outputs/flutter-apk/*.apk  # <-- *.apk 로 수정
+          path: artifacts/*.apk  # artifacts 폴더 내의 모든 APK 파일 업로드
