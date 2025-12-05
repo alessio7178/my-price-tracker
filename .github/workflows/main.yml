@@ -1,0 +1,30 @@
+name: Build APK
+
+on: [push]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: Install Dependencies
+      run: |
+        pip install -r requirements.txt
+        
+    - name: Build APK
+      uses: flet-dev/flet-action@v1
+      with:
+        target: android
+        main: main.py
+        
+    - name: Upload APK
+      uses: actions/upload-artifact@v3
+      with:
+        name: MyPriceApp
+        path: build/app/outputs/flutter-apk/app-release.apk
