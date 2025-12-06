@@ -18,7 +18,7 @@ jobs:
         with:
           python-version: '3.11'
 
-      # 3. 자바 설치 (안드로이드 빌드 필수)
+      # 3. 자바 설치
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
@@ -31,7 +31,7 @@ jobs:
         with:
           channel: 'stable'
 
-      # 5. [핵심 수정] 안드로이드 라이선스 자동 동의
+      # 5. 라이선스 동의
       - name: Accept Android licenses
         run: |
           yes | flutter doctor --android-licenses
@@ -42,21 +42,21 @@ jobs:
           pip install -r requirements.txt
           pip install flet
 
-      # 7. APK 빌드 명령
+      # 7. APK 빌드
       - name: Flet Build APK
         run: |
           flet build apk --verbose
 
-      # 8. [핵심 수정] APK 파일 찾아서 복사
+      # 8. [수정됨] APK 파일 찾아서 복사 (경로 변경: build/apk)
       - name: Copy APK to artifacts folder
         run: |
           mkdir -p artifacts
-          # find 명령어를 사용하여 build 폴더 내의 모든 APK 파일을 artifacts 폴더로 복사합니다.
-          find build/app/outputs/flutter-apk -name "*.apk" -exec cp {} artifacts/ \;
+          # Flet이 최종적으로 옮겨둔 build/apk 폴더를 찾아봅니다.
+          find build/apk -name "*.apk" -exec cp {} artifacts/ \;
 
-      # 9. 결과물 업로드 (안정적인 경로 사용)
+      # 9. 결과물 업로드
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: MyPriceApp
-          path: artifacts/*.apk  # artifacts 폴더 내의 모든 APK 파일 업로드
+          path: artifacts/*.apk
