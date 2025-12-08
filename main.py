@@ -42,25 +42,25 @@ def main(page: ft.Page):
     page.keep_screen_on = True
 
     # =================================================================
-    # 🛠️ [최우선 정의] 알림 함수들 (가장 먼저 정의해야 에러 안 남)
+    # 🚨 [최우선 정의] 알림 및 팝업 함수 (에러 원천 차단)
     # =================================================================
 
-    # 1. 간단 메시지 (스낵바)
-    def show_message(text, color="white", bgcolor="#333333"):
-        page.open(ft.SnackBar(
-            content=ft.Text(text, color=color, font_family="NotoSansKR"),
-            bgcolor=bgcolor,
-            action="확인",
-            action_color=ACCENT_COLOR,
-            duration=2000
-        ))
+    # 1. 통합 알림 함수 (팝업 + 상단바)
+    def send_app_notification(title, message, is_error=False):
+        # (1) 화면 중앙 팝업 띄우기 (AlertDialog)
+        # 메인 스레드에서 UI를 그려야 안전하므로 page.open 사용
+        dlg_alert = ft.AlertDialog(
+            title=ft.Text(title, color=ERROR_COLOR if is_error else ACCENT_COLOR, weight="bold"),
+            content=ft.Text(message, color=TEXT_COLOR, size=16),
+            actions=[
+                ft.TextButton("확인", on_click=lambda e: page.close(dlg_alert)),
+            ],
+            actions_alignment=ft.MainAxisAlignment.END,
+            bgcolor=CARD_COLOR,
+        )
+        page.open(dlg_alert)
 
-    # 2. 통합 알림 (앱 내 메시지 + 상단바 알림)
-    def send_app_notification(title, message):
-        # 앱 내 스낵바 띄우기
-        show_message(f"{title}: {message}", color="white", bgcolor=ACCENT_COLOR)
-
-        # 시스템 상단바 알림 (Plyer)
+        # (2) 시스템 상단바 알림 (백그라운드용)
         if notification:
             try:
                 notification.notify(
@@ -72,15 +72,11 @@ def main(page: ft.Page):
             except:
                 pass
 
-    # 3. 에러 팝업
+    # 2. 에러 전용 팝업 (위 함수 재사용)
     def show_error_dialog(error_msg):
-        dlg = ft.AlertDialog(
-            title=ft.Text("⚠️ 알림", color=ERROR_COLOR),
-            content=ft.Text(f"{error_msg}", color=TEXT_COLOR),
-            actions=[ft.TextButton("확인", on_click=lambda e: page.close(dlg))],
-            bgcolor=CARD_COLOR
-        )
-        page.open(dlg)
+        send_app_notification("⚠️ 오류 발생", error_msg, is_error=True)
+
+    # =================================================================
 
     # --- 데이터 로드 ---
     my_wishlist = []
@@ -113,6 +109,7 @@ def main(page: ft.Page):
                 try:
                     encText = urllib.parse.quote(item['title'])
                     url = f"https://openapi.naver.com/v1/search/shop.json?query={encText}&display=1&sort=sim"
+
                     res = requests.get(url, headers=headers)
                     items = res.json().get('items', [])
 
@@ -124,10 +121,14 @@ def main(page: ft.Page):
                             my_wishlist[i]['price'] = current_price
                             updated_count += 1
 
+                        # [목표가 도달!] -> 팝업 알림 띄우기
                         if current_price <= target_price:
+                            # 팝업은 메인 스레드에서 띄워야 하므로 invoke 사용 고려할 수 있으나
+                            # Flet의 page.open은 스레드 안전하게 동작하는 편입니다.
+                            # 만약 UI 멈춤이 발생하면 로직 분리가 필요하나 현재 구조에선 호출 가능
                             send_app_notification(
                                 "🔔 목표가 달성!",
-                                f"[{item['mall']}] {item['title'][:10]}...\n현재가: {current_price:,}원"
+                                f"상품: {item['title'][:10]}...\n현재가: {current_price:,}원\n(목표: {target_price:,}원)"
                             )
                 except:
                     pass
@@ -145,6 +146,7 @@ def main(page: ft.Page):
             super().__init__()
             self.keywords = []
             self.chip_color = chip_color
+
             self.chip_row = ft.Row(wrap=True, spacing=5)
             self.input_field = ft.TextField(
                 label=label_text, hint_text=hint_text, border_color="transparent", bgcolor=INPUT_BG, color=TEXT_COLOR,
@@ -294,7 +296,7 @@ def main(page: ft.Page):
         if not main_kwd:
             loading_overlay.visible = False
             search_inputs_container.visible = True
-            show_message("검색어를 입력해주세요!", bgcolor=ERROR_COLOR)
+            show_error_dialog("검색어를 입력해주세요!")
             page.update()
             return
 
@@ -397,7 +399,7 @@ def main(page: ft.Page):
     # --- 찜하기 로직 ---
     def open_zzim_dialog(item):
         if len(my_wishlist) >= 50:
-            send_app_notification("알림", "찜 목록은 최대 50개까지만 가능합니다.")
+            show_error_dialog("찜 목록은 최대 50개까지만 가능합니다.")
             return
 
         target_price_field = ft.TextField(label="목표 가격", value=str(item['price']), text_align="right",
@@ -420,7 +422,7 @@ def main(page: ft.Page):
                 ft.Text(f"상품: {item['title']}", size=12, color=SUB_TEXT_COLOR, font_family="NotoSansKR"),
                 ft.Divider(color="#444"),
                 target_price_field,
-                ft.Text("이 가격 이하가 되면 앱 알림을 보냅니다.", size=12, color=SUB_TEXT_COLOR, font_family="NotoSansKR")
+                ft.Text("이 가격 이하가 되면 팝업 알림을 띄웁니다.", size=12, color=SUB_TEXT_COLOR, font_family="NotoSansKR")
             ], height=150, width=300),
             actions=[ft.TextButton("취소", on_click=lambda e: page.close(dlg_zzim),
                                    style=ft.ButtonStyle(color=SUB_TEXT_COLOR)),
@@ -491,7 +493,7 @@ def main(page: ft.Page):
                 on_click=reset_all
             ),
             ft.Container(height=20),
-            ft.Text("Version 1.6.2 (Ref Fixed)", size=12, color="grey")
+            ft.Text("Version 2.0 (Popup Alert)", size=12, color="grey")
         ], spacing=10),
         padding=20
     )
