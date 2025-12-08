@@ -9,56 +9,46 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
+      # 1. 코드 가져오기
       - uses: actions/checkout@v4
 
+      # 2. 파이썬 설치
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
+      # 3. 자바 설치
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
 
+      # 4. 플러터 설치
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
           
+      # 5. 라이브러리 설치
       - name: Install Dependencies
         run: |
           pip install -r requirements.txt
           pip install flet
 
-      # [수정 1] git clone으로 템플릿 강제 다운로드 (가장 확실함)
-      - name: Clone Flet Template
-        run: |
-          git clone https://github.com/flet-dev/flet-build-template.git my_template
-          ls -R my_template/android/app/src/main/ # 파일 있는지 눈으로 확인
-
-      # [수정 2] 권한 강제 주입 (더 안전한 sed 방식 사용)
-      # <application> 태그 바로 앞에 권한 코드를 끼워 넣습니다.
-      - name: Inject Permissions
-        run: |
-          PERMISSIONS='<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n    <uses-permission android:name="android.permission.WAKE_LOCK" />\n    <uses-permission android:name="android.permission.VIBRATE" />\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />'
-          
-          sed -i "s|<application|$PERMISSIONS\n    <application|g" my_template/android/app/src/main/AndroidManifest.xml
-          
-          # 잘 들어갔는지 확인 (로그 출력)
-          cat my_template/android/app/src/main/AndroidManifest.xml | grep "uses-permission"
-
-      # [수정 3] 수정한 템플릿으로 빌드
+      # 6. [정석 빌드] 복잡한 옵션 다 빼고 가장 기본 명령어로 빌드합니다.
       - name: Flet Build APK
         run: |
-          flet build apk --template my_template --org com.myprice.fixed --verbose
+          flet build apk --verbose
 
-      - name: Copy APK to artifacts folder
+      # 7. 빌드된 APK 파일을 찾아서 artifacts 폴더로 복사 (경로 에러 방지)
+      - name: Locate and Copy APK
         run: |
           mkdir -p artifacts
-          find build/apk -name "*.apk" -exec cp {} artifacts/ \;
+          find . -name "*.apk" -type f -exec cp {} artifacts/ \;
 
+      # 8. 업로드
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
