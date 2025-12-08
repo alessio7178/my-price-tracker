@@ -36,11 +36,11 @@ jobs:
           pip install -r requirements.txt
           pip install flet
 
-      # [핵심 수정] 앱 ID를 변경하여 새로운 앱으로 인식시킴
-      # org: com.myprice -> 앱 ID가 'com.myprice.tracker'로 바뀜
+      # [수정됨] 에러 나던 --project-name 옵션 삭제
+      # --org com.myprice 옵션은 유지하여 앱 ID를 변경 (신분 세탁 효과)
       - name: Flet Build APK
         run: |
-          flet build apk --org com.myprice --project-name tracker --verbose
+          flet build apk --org com.myprice --verbose
 
       - name: Copy APK to artifacts folder
         run: |
