@@ -39,11 +39,10 @@ def main(page: ft.Page):
     page.padding = 0
     page.window_width = 390
     page.window_height = 844
-    page.keep_screen_on = True  # 화면 꺼짐 방지 (24시간 감시 필수)
+    page.keep_screen_on = True
 
     # --- 데이터 로드 ---
     my_wishlist = []
-
     if os.path.exists(WISHLIST_FILE):
         try:
             with open(WISHLIST_FILE, "r", encoding="utf-8") as f:
@@ -58,15 +57,20 @@ def main(page: ft.Page):
         except:
             pass
 
-    # --- 알림 함수 ---
-    def send_app_notification(title, message):
-        # 1. 화면 내부 알림
+    # --- [복구됨] 간단 메시지 표시 함수 (에러 원인 해결) ---
+    def show_message(text, color="white", bgcolor="#333333"):
         page.open(ft.SnackBar(
-            content=ft.Text(f"{title}\n{message}", color="white"),
-            bgcolor=ACCENT_COLOR,
+            content=ft.Text(text, color=color, font_family="NotoSansKR"),
+            bgcolor=bgcolor,
             action="확인",
-            duration=5000
+            action_color=ACCENT_COLOR,
+            duration=2000
         ))
+
+    # --- 시스템 알림 함수 ---
+    def send_app_notification(title, message):
+        # 1. 앱 내 스낵바
+        show_message(f"{title}: {message}", color="white", bgcolor=ACCENT_COLOR)
 
         # 2. 시스템 알림 (상단바)
         if notification:
@@ -90,53 +94,42 @@ def main(page: ft.Page):
         page.open(dlg)
 
     # =================================================================
-    # 🤖 [핵심] 1시간 자동 감시 루프
+    # 🤖 1시간 자동 감시 루프
     # =================================================================
     def auto_monitor_loop():
         while True:
-            # 1시간 대기 (테스트할 땐 60초로 줄여보세요)
-            time.sleep(3600)
-
+            time.sleep(3600)  # 1시간
             if not my_wishlist: continue
 
-            print(f"[{datetime.now()}] 자동 감시 시작...")
             headers = {"X-Naver-Client-Id": NAVER_CLIENT_ID, "X-Naver-Client-Secret": NAVER_CLIENT_SECRET}
-
             updated_count = 0
 
             for i, item in enumerate(my_wishlist):
                 try:
-                    # 찜한 상품명으로 다시 최저가 검색
                     encText = urllib.parse.quote(item['title'])
-                    # 정확한 상품 매칭을 위해 랭킹순/10개 정도만 확인
-                    url = f"https://openapi.naver.com/v1/search/shop.json?query={encText}&display=5&sort=sim"
-
+                    url = f"https://openapi.naver.com/v1/search/shop.json?query={encText}&display=1&sort=sim"
                     res = requests.get(url, headers=headers)
                     items = res.json().get('items', [])
 
                     if items:
-                        # 가장 상위 결과의 가격 확인 (보통 같은 상품)
                         current_price = int(items[0]['lprice'])
                         target_price = item['target_price']
 
-                        # 가격 정보 업데이트
-                        my_wishlist[i]['price'] = current_price
+                        if my_wishlist[i]['price'] != current_price:
+                            my_wishlist[i]['price'] = current_price
+                            updated_count += 1
 
-                        # 목표가 도달 체크
                         if current_price <= target_price:
                             send_app_notification(
                                 "🔔 목표가 달성!",
                                 f"[{item['mall']}] {item['title'][:10]}...\n현재가: {current_price:,}원"
                             )
-                            updated_count += 1
-                except Exception as e:
-                    print(f"감시 중 에러: {e}")
+                except:
+                    pass
 
             if updated_count > 0:
                 save_data()
-                # UI 갱신 (메인 스레드 요청은 생략하거나 필요 시 signal 사용)
 
-    # 백그라운드 스레드 시작
     threading.Thread(target=auto_monitor_loop, daemon=True).start()
 
     # =================================================================
@@ -238,30 +231,37 @@ def main(page: ft.Page):
                                    width=400, height=50,
                                    style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=12)))
 
-    # 접이식 검색창
-    search_accordion = ft.ExpansionTile(
-        title=ft.Text("🔍 검색 조건 설정", color=ACCENT_COLOR, weight="bold", size=16),
-        subtitle=ft.Text("터치하여 검색창 열기/닫기", size=12, color=SUB_TEXT_COLOR),
-        initially_expanded=True,
+    search_inputs_container = ft.Container(
+        content=ft.Column([
+            txt_main_keyword,
+            km_must,
+            km_exclude,
+            ft.Row([txt_min_price, ft.Text("~", color=SUB_TEXT_COLOR), txt_max_price], alignment="spaceBetween"),
+            rg_sort,
+            ft.Text("판매처 (옆으로 스크롤)", size=12, color=SUB_TEXT_COLOR, font_family="NotoSansKR"),
+            row_malls,
+            ft.Container(height=10),
+            btn_search
+        ], spacing=15),
+        padding=20,
+        visible=True
+    )
+
+    toggle_icon = ft.Icon(name="expand_less", color=ACCENT_COLOR)
+
+    def toggle_search_box(e):
+        search_inputs_container.visible = not search_inputs_container.visible
+        toggle_icon.name = "expand_more" if not search_inputs_container.visible else "expand_less"
+        page.update()
+
+    search_header_row = ft.Container(
+        content=ft.Row([
+            ft.Text("🔍 검색 조건 설정", color=ACCENT_COLOR, weight="bold", size=16),
+            toggle_icon
+        ], alignment="spaceBetween"),
+        padding=10,
         bgcolor=BG_COLOR,
-        collapsed_bgcolor=BG_COLOR,
-        controls=[
-            ft.Container(
-                content=ft.Column([
-                    txt_main_keyword,
-                    km_must,
-                    km_exclude,
-                    ft.Row([txt_min_price, ft.Text("~", color=SUB_TEXT_COLOR), txt_max_price],
-                           alignment="spaceBetween"),
-                    rg_sort,
-                    ft.Text("판매처 (옆으로 스크롤)", size=12, color=SUB_TEXT_COLOR, font_family="NotoSansKR"),
-                    row_malls,
-                    ft.Container(height=10),
-                    btn_search
-                ], spacing=15),
-                padding=20,
-            )
-        ]
+        on_click=toggle_search_box
     )
 
     lv_results = ft.ListView(expand=True, spacing=15, padding=20)
@@ -280,14 +280,15 @@ def main(page: ft.Page):
 
     # --- 검색 로직 ---
     def run_search(e):
-        search_accordion.expanded = False  # 검색 시 접기
+        search_inputs_container.visible = False
+        toggle_icon.name = "expand_more"
         loading_overlay.visible = True
         page.update()
 
         main_kwd = txt_main_keyword.value
         if not main_kwd:
             loading_overlay.visible = False
-            search_accordion.expanded = True
+            search_inputs_container.visible = True
             show_message("검색어를 입력해주세요!", bgcolor=ERROR_COLOR)
             page.update()
             return
@@ -349,7 +350,7 @@ def main(page: ft.Page):
                         content=ft.Text("조건에 맞는 상품이 없습니다.", color=SUB_TEXT_COLOR, font_family="NotoSansKR"),
                         alignment=ft.alignment.center, padding=50))
                 else:
-                    send_app_notification("검색 완료", f"{len(collected)}개의 최저가를 찾았습니다!")
+                    show_message(f"{len(collected)}개의 최저가를 찾았습니다!", bgcolor=ACCENT_COLOR)
                     for idx, item in enumerate(collected[:10]):
                         card = ft.Container(
                             content=ft.Column([
@@ -472,7 +473,7 @@ def main(page: ft.Page):
         my_wishlist.clear()
         save_data()
         refresh_wishlist_tab()
-        send_app_notification("초기화 완료", "모든 찜 목록이 삭제되었습니다.")
+        show_message("모든 찜 목록이 삭제되었습니다.", bgcolor=ACCENT_COLOR)
 
     settings_view = ft.Container(
         content=ft.Column([
@@ -485,7 +486,7 @@ def main(page: ft.Page):
                 on_click=reset_all
             ),
             ft.Container(height=20),
-            ft.Text("Version 1.2.0 (Auto-Monitor Active)", size=12, color="grey")
+            ft.Text("Version 1.4.1 (Final Fixed)", size=12, color="grey")
         ], spacing=10),
         padding=20
     )
@@ -504,7 +505,11 @@ def main(page: ft.Page):
     def on_tab_click(e):
         idx = tabs.selected_index
         content_area.content = [
-            ft.Container(content=ft.Column([search_accordion, lv_results])),
+            ft.Container(content=ft.Column([
+                search_header_row,
+                search_inputs_container,
+                lv_results
+            ])),
             lv_wishlist_tab,
             settings_view
         ][idx]
@@ -519,7 +524,6 @@ def main(page: ft.Page):
             loading_overlay
         ], expand=True)
     )
-
     on_tab_click(None)
     refresh_wishlist_tab()
 
