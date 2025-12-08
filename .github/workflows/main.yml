@@ -36,11 +36,29 @@ jobs:
           pip install -r requirements.txt
           pip install flet
 
-      # [수정됨] 에러 나던 --project-name 옵션 삭제
-      # --org com.myprice 옵션은 유지하여 앱 ID를 변경 (신분 세탁 효과)
+      # [핵심 1] Flet 앱 템플릿을 미리 다운로드합니다.
+      - name: Checkout Flet Template
+        uses: actions/checkout@v4
+        with:
+          repository: flet-dev/flet-build-template
+          path: my_template
+          # 호환성을 위해 최신 안정 버전 태그 사용 (필요시 수정)
+
+      # [핵심 2] 안드로이드 설정 파일(Manifest)에 권한 강제 주입
+      # 알림(POST_NOTIFICATIONS), 진동(VIBRATE), 화면켜짐(WAKE_LOCK) 권한을 추가합니다.
+      - name: Inject Permissions to Manifest
+        run: |
+          # AndroidManifest.xml 파일에 권한 태그 삽입
+          sed -i '/<manifest/a \    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n    <uses-permission android:name="android.permission.WAKE_LOCK" />\n    <uses-permission android:name="android.permission.VIBRATE" />' my_template/android/app/src/main/AndroidManifest.xml
+          
+          # 제대로 들어갔는지 확인 출력
+          echo "Updated Manifest Content:"
+          head -n 10 my_template/android/app/src/main/AndroidManifest.xml
+
+      # [핵심 3] 수정한 템플릿(--template)을 사용하여 빌드
       - name: Flet Build APK
         run: |
-          flet build apk --org com.myprice --verbose
+          flet build apk --template my_template --org com.myprice.fixed --verbose
 
       - name: Copy APK to artifacts folder
         run: |
@@ -50,5 +68,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: MyPriceApp_NewID
+          name: MyPriceApp_Fixed
           path: artifacts/*.apk
