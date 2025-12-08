@@ -9,65 +9,60 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      # 1. 코드 가져오기
       - uses: actions/checkout@v4
 
-      # 2. 파이썬 설치
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      # 3. 자바 설치
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
 
-      # 4. 플러터 설치
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
+
+      # [1단계] 앱 템플릿 다운로드
+      - name: Clone Template
+        run: |
+          git clone https://github.com/flet-dev/flet-build-template.git my_template
+
+      # [2단계] 권한 강제 주입 (파일 위치를 찾아서 정확히 넣음)
+      - name: Inject Permissions
+        run: |
+          # 권한 목록 정의 (알림, 진동, 화면유지, 서비스, 인터넷)
+          PERMS='<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n    <uses-permission android:name="android.permission.WAKE_LOCK" />\n    <uses-permission android:name="android.permission.VIBRATE" />\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />\n    <uses-permission android:name="android.permission.INTERNET" />'
           
+          # AndroidManifest.xml 파일을 찾아서 <application> 태그 바로 윗줄에 권한을 삽입
+          find my_template -name "AndroidManifest.xml" -exec sed -i "s|<application|$PERMS\n    <application|g" {} +
+          
+          # 확인용 출력
+          echo "✅ 권한 주입 확인:"
+          find my_template -name "AndroidManifest.xml" -exec grep "uses-permission" {} +
+
       - name: Install Dependencies
         run: |
           pip install -r requirements.txt
           pip install flet
 
-      # 5. [핵심] 템플릿 다운로드 및 권한 강제 주입
-      # 템플릿 구조가 복잡해도 'find'로 Manifest 파일을 찾아내서 권한을 꽂아 넣습니다.
-      - name: Prepare Template with Permissions
-        run: |
-          # 1. 템플릿 다운로드
-          git clone https://github.com/flet-dev/flet-build-template.git my_template
-          
-          # 2. 주입할 권한 목록 (알림, 진동, 화면유지, 서비스)
-          PERMS='<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n    <uses-permission android:name="android.permission.WAKE_LOCK" />\n    <uses-permission android:name="android.permission.VIBRATE" />\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />'
-          
-          # 3. AndroidManifest.xml 파일을 찾아서 권한 주입
-          find my_template -name "AndroidManifest.xml" -exec sed -i "s|<application|$PERMS\n    <application|g" {} +
-          
-          # 4. 확인용 출력 (로그에서 확인 가능)
-          echo "✅ 권한 주입 완료! 변경된 내용 확인:"
-          find my_template -name "AndroidManifest.xml" -exec grep "uses-permission" {} +
-
-      # 6. 수정된 템플릿으로 APK 빌드
-      # --template my_template 옵션으로 우리가 수정한 버전을 사용합니다.
+      # [3단계] 신분 세탁 빌드 (새로운 ID: com.final.tracker)
       - name: Flet Build APK
         run: |
-          flet build apk --template my_template --org com.myprice.tracker --verbose
+          flet build apk --template my_template --org com.final --project-name tracker --verbose
 
-      # 7. 빌드된 파일 복사 (경로 에러 방지용 안전 장치)
-      - name: Locate and Copy APK
+      # [4단계] 결과물 복사
+      - name: Copy APK
         run: |
           mkdir -p artifacts
           find . -name "*.apk" -type f -exec cp {} artifacts/ \;
 
-      # 8. 업로드
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: MyPriceApp_Permission_Fixed
+          name: MyPriceApp_Final_V2
           path: artifacts/*.apk
