@@ -39,10 +39,11 @@ def main(page: ft.Page):
     page.padding = 0
     page.window_width = 390
     page.window_height = 844
-    page.keep_screen_on = True
+    page.keep_screen_on = True  # 화면 꺼짐 방지 (24시간 감시 필수)
 
     # --- 데이터 로드 ---
     my_wishlist = []
+
     if os.path.exists(WISHLIST_FILE):
         try:
             with open(WISHLIST_FILE, "r", encoding="utf-8") as f:
@@ -59,19 +60,84 @@ def main(page: ft.Page):
 
     # --- 알림 함수 ---
     def send_app_notification(title, message):
-        page.open(ft.SnackBar(content=ft.Text(f"{title}\n{message}", color="white"), bgcolor=ACCENT_COLOR, action="확인",
-                              duration=3000))
+        # 1. 화면 내부 알림
+        page.open(ft.SnackBar(
+            content=ft.Text(f"{title}\n{message}", color="white"),
+            bgcolor=ACCENT_COLOR,
+            action="확인",
+            duration=5000
+        ))
+
+        # 2. 시스템 알림 (상단바)
         if notification:
             try:
-                notification.notify(title=title, message=message, app_name="최저가 사냥꾼", timeout=5)
+                notification.notify(
+                    title=title,
+                    message=message,
+                    app_name="최저가 사냥꾼",
+                    timeout=5
+                )
             except:
                 pass
 
     def show_error_dialog(error_msg):
-        dlg = ft.AlertDialog(title=ft.Text("⚠️ 알림", color=ERROR_COLOR),
-                             content=ft.Text(f"{error_msg}", color=TEXT_COLOR),
-                             actions=[ft.TextButton("확인", on_click=lambda e: page.close(dlg))], bgcolor=CARD_COLOR)
+        dlg = ft.AlertDialog(
+            title=ft.Text("⚠️ 알림", color=ERROR_COLOR),
+            content=ft.Text(f"{error_msg}", color=TEXT_COLOR),
+            actions=[ft.TextButton("확인", on_click=lambda e: page.close(dlg))],
+            bgcolor=CARD_COLOR
+        )
         page.open(dlg)
+
+    # =================================================================
+    # 🤖 [핵심] 1시간 자동 감시 루프
+    # =================================================================
+    def auto_monitor_loop():
+        while True:
+            # 1시간 대기 (테스트할 땐 60초로 줄여보세요)
+            time.sleep(3600)
+
+            if not my_wishlist: continue
+
+            print(f"[{datetime.now()}] 자동 감시 시작...")
+            headers = {"X-Naver-Client-Id": NAVER_CLIENT_ID, "X-Naver-Client-Secret": NAVER_CLIENT_SECRET}
+
+            updated_count = 0
+
+            for i, item in enumerate(my_wishlist):
+                try:
+                    # 찜한 상품명으로 다시 최저가 검색
+                    encText = urllib.parse.quote(item['title'])
+                    # 정확한 상품 매칭을 위해 랭킹순/10개 정도만 확인
+                    url = f"https://openapi.naver.com/v1/search/shop.json?query={encText}&display=5&sort=sim"
+
+                    res = requests.get(url, headers=headers)
+                    items = res.json().get('items', [])
+
+                    if items:
+                        # 가장 상위 결과의 가격 확인 (보통 같은 상품)
+                        current_price = int(items[0]['lprice'])
+                        target_price = item['target_price']
+
+                        # 가격 정보 업데이트
+                        my_wishlist[i]['price'] = current_price
+
+                        # 목표가 도달 체크
+                        if current_price <= target_price:
+                            send_app_notification(
+                                "🔔 목표가 달성!",
+                                f"[{item['mall']}] {item['title'][:10]}...\n현재가: {current_price:,}원"
+                            )
+                            updated_count += 1
+                except Exception as e:
+                    print(f"감시 중 에러: {e}")
+
+            if updated_count > 0:
+                save_data()
+                # UI 갱신 (메인 스레드 요청은 생략하거나 필요 시 signal 사용)
+
+    # 백그라운드 스레드 시작
+    threading.Thread(target=auto_monitor_loop, daemon=True).start()
 
     # =================================================================
     # 🧩 키워드 칩 UI
@@ -100,8 +166,8 @@ def main(page: ft.Page):
                         self.keywords.append(word)
                         self.chip_row.controls.append(
                             ft.Chip(label=ft.Text(word, color=self.chip_color, font_family="NotoSansKR"),
-                                    bgcolor=CARD_COLOR, on_delete=self.delete_keyword, data=word,
-                                    delete_icon_color=SUB_TEXT_COLOR))
+                                    bgcolor=CARD_COLOR,
+                                    on_delete=self.delete_keyword, data=word, delete_icon_color=SUB_TEXT_COLOR))
                 self.input_field.value = ""
                 self.update()
 
@@ -127,83 +193,101 @@ def main(page: ft.Page):
         bgcolor=BG_COLOR
     )
 
-    # --- 입력창들 ---
-    txt_main_keyword = ft.TextField(label="메인 검색어", hint_text="예: 비쎌 청소기", border_color="transparent", bgcolor=INPUT_BG,
-                                    border_radius=15, prefix_icon="search", color=TEXT_COLOR, text_size=16,
-                                    hint_style=ft.TextStyle(color=SUB_TEXT_COLOR, font_family="NotoSansKR"),
-                                    label_style=ft.TextStyle(color=SUB_TEXT_COLOR, font_family="NotoSansKR"))
+    txt_main_keyword = ft.TextField(
+        label="메인 검색어", hint_text="예: 비쎌 청소기", border_color="transparent", bgcolor=INPUT_BG, border_radius=15,
+        prefix_icon="search", color=TEXT_COLOR, text_size=16,
+        hint_style=ft.TextStyle(color=SUB_TEXT_COLOR, font_family="NotoSansKR"),
+        label_style=ft.TextStyle(color=SUB_TEXT_COLOR, font_family="NotoSansKR")
+    )
+
     txt_min_price = ft.TextField(label="최소 가격", value="0", width=120, text_align="right", bgcolor=INPUT_BG,
                                  border_color="transparent", border_radius=10, color=TEXT_COLOR, text_size=14)
     txt_max_price = ft.TextField(label="목표 가격", value="45000", width=120, text_align="right", bgcolor=INPUT_BG,
                                  border_color="transparent", border_radius=10, color=TEXT_COLOR, text_size=14)
-    rg_sort = ft.RadioGroup(content=ft.Row([ft.Radio(value="sim", label="랭킹순(추천)", fill_color=ACCENT_COLOR),
-                                            ft.Radio(value="asc", label="최저가순", fill_color=ACCENT_COLOR)]), value="sim")
 
-    mall_mapping = {"쿠팡": ["쿠팡"], "G마켓": ["G마켓", "지마켓"], "옥션": ["옥션"], "11번가": ["11번가"], "오늘의집": ["오늘의집"],
-                    "Kurly": ["컬리", "Kurly", "마켓컬리"], "신세계": ["SSG", "신세계", "이마트"], "롯데온": ["롯데"]}
+    rg_sort = ft.RadioGroup(content=ft.Row([
+        ft.Radio(value="sim", label="랭킹순(추천)", fill_color=ACCENT_COLOR),
+        ft.Radio(value="asc", label="최저가순", fill_color=ACCENT_COLOR)
+    ]), value="sim")
+
+    mall_mapping = {
+        "쿠팡": ["쿠팡"], "G마켓": ["G마켓", "지마켓"], "옥션": ["옥션"],
+        "11번가": ["11번가"], "오늘의집": ["오늘의집"],
+        "Kurly": ["컬리", "Kurly", "마켓컬리"], "신세계": ["SSG", "신세계", "이마트"], "롯데온": ["롯데"]
+    }
+
     selected_malls_ui = []
 
     def toggle_mall(e):
-        e.control.selected = not e.control.selected; e.control.update()
+        e.control.selected = not e.control.selected
+        e.control.update()
 
     row_malls = ft.Row(scroll="hidden")
     for m in mall_mapping.keys():
-        chip = ft.Chip(label=ft.Text(m, color=TEXT_COLOR, font_family="NotoSansKR"), on_click=toggle_mall,
-                       bgcolor=CARD_COLOR, selected_color=ACCENT_COLOR, show_checkmark=False)
+        chip = ft.Chip(
+            label=ft.Text(m, color=TEXT_COLOR, font_family="NotoSansKR"),
+            on_click=toggle_mall,
+            bgcolor=CARD_COLOR,
+            selected_color=ACCENT_COLOR,
+            show_checkmark=False
+        )
         row_malls.controls.append(chip)
         selected_malls_ui.append(chip)
 
-    # [핵심] 수동 접기/펴기 구현
-    search_inputs_container = ft.Column([
-        txt_main_keyword, km_must, km_exclude,
-        ft.Row([txt_min_price, ft.Text("~", color=SUB_TEXT_COLOR), txt_max_price], alignment="spaceBetween"),
-        rg_sort, ft.Text("판매처 (옆으로 스크롤)", size=12, color=SUB_TEXT_COLOR, font_family="NotoSansKR"), row_malls,
-        ft.Container(height=10),
-        ft.ElevatedButton("검색 시작", on_click=lambda e: run_search(e), bgcolor=ACCENT_COLOR, color="white", width=400,
-                          height=50, style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=12)))
-    ], spacing=15, visible=True)  # 기본은 펼쳐짐
+    btn_search = ft.ElevatedButton("검색 시작", on_click=lambda e: run_search(e), bgcolor=ACCENT_COLOR, color="white",
+                                   width=400, height=50,
+                                   style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=12)))
 
-    toggle_icon = ft.Icon(name="expand_less", color=ACCENT_COLOR)  # 접기 아이콘
-
-    def toggle_search_box(e):
-        # 상태 반전
-        search_inputs_container.visible = not search_inputs_container.visible
-        toggle_icon.name = "expand_more" if not search_inputs_container.visible else "expand_less"
-        page.update()
-
-    search_header_row = ft.Container(
-        content=ft.Row([
-            ft.Text("🔍 검색 조건 설정", color=ACCENT_COLOR, weight="bold", size=16),
-            toggle_icon
-        ], alignment="spaceBetween"),
-        padding=10,
-        on_click=toggle_search_box,  # 제목 눌러도 토글
-        bgcolor=BG_COLOR
+    # 접이식 검색창
+    search_accordion = ft.ExpansionTile(
+        title=ft.Text("🔍 검색 조건 설정", color=ACCENT_COLOR, weight="bold", size=16),
+        subtitle=ft.Text("터치하여 검색창 열기/닫기", size=12, color=SUB_TEXT_COLOR),
+        initially_expanded=True,
+        bgcolor=BG_COLOR,
+        collapsed_bgcolor=BG_COLOR,
+        controls=[
+            ft.Container(
+                content=ft.Column([
+                    txt_main_keyword,
+                    km_must,
+                    km_exclude,
+                    ft.Row([txt_min_price, ft.Text("~", color=SUB_TEXT_COLOR), txt_max_price],
+                           alignment="spaceBetween"),
+                    rg_sort,
+                    ft.Text("판매처 (옆으로 스크롤)", size=12, color=SUB_TEXT_COLOR, font_family="NotoSansKR"),
+                    row_malls,
+                    ft.Container(height=10),
+                    btn_search
+                ], spacing=15),
+                padding=20,
+            )
+        ]
     )
 
     lv_results = ft.ListView(expand=True, spacing=15, padding=20)
 
-    loading_overlay = ft.Container(content=ft.Column(
-        [ft.ProgressRing(width=50, height=50, color=ACCENT_COLOR, stroke_width=4),
-         ft.Text("최저가를 찾고 있어요...", size=18, weight="bold", color=TEXT_COLOR, font_family="NotoSansKR"),
-         ft.Text("잠시만 기다려주세요", size=14, color=SUB_TEXT_COLOR, font_family="NotoSansKR")], alignment="center",
-        horizontal_alignment="center", spacing=20), alignment=ft.alignment.center, bgcolor="#E6191919", visible=False,
-                                   expand=True)
+    loading_overlay = ft.Container(
+        content=ft.Column([
+            ft.ProgressRing(width=50, height=50, color=ACCENT_COLOR, stroke_width=4),
+            ft.Text("최저가를 찾고 있어요...", size=18, weight="bold", color=TEXT_COLOR, font_family="NotoSansKR"),
+            ft.Text("잠시만 기다려주세요", size=14, color=SUB_TEXT_COLOR, font_family="NotoSansKR")
+        ], alignment="center", horizontal_alignment="center", spacing=20),
+        alignment=ft.alignment.center,
+        bgcolor="#E6191919",
+        visible=False,
+        expand=True,
+    )
 
     # --- 검색 로직 ---
     def run_search(e):
-        # 1. 강제 접기
-        search_inputs_container.visible = False
-        toggle_icon.name = "expand_more"
-
+        search_accordion.expanded = False  # 검색 시 접기
         loading_overlay.visible = True
         page.update()
 
         main_kwd = txt_main_keyword.value
         if not main_kwd:
             loading_overlay.visible = False
-            search_inputs_container.visible = True  # 다시 펼침
-            toggle_icon.name = "expand_less"
+            search_accordion.expanded = True
             show_message("검색어를 입력해주세요!", bgcolor=ERROR_COLOR)
             page.update()
             return
@@ -212,9 +296,11 @@ def main(page: ft.Page):
             try:
                 min_p = int(txt_min_price.value) if txt_min_price.value else 0
                 max_p = int(txt_max_price.value) if txt_max_price.value else 0
+
                 query = main_kwd
                 if km_must.keywords:
                     for w in km_must.keywords: query += f" {w}"
+
                 exclude_list = km_exclude.keywords
                 target_keywords = []
                 for chip in selected_malls_ui:
@@ -227,6 +313,7 @@ def main(page: ft.Page):
                     start = (page_num * 100) + 1
                     encText = urllib.parse.quote(query)
                     url = f"https://openapi.naver.com/v1/search/shop.json?query={encText}&display=100&start={start}&sort={rg_sort.value}&exclude=used:rental:cbshop"
+
                     try:
                         res = requests.get(url, headers=headers, timeout=5)
                         items = res.json().get('items', [])
@@ -251,6 +338,7 @@ def main(page: ft.Page):
                             if not is_wanted: continue
 
                         collected.append({"title": title, "mall": mall, "price": price, "link": link})
+
                     if len(collected) >= 30: break
 
                 collected.sort(key=lambda x: x['price'])
@@ -287,9 +375,11 @@ def main(page: ft.Page):
                                                                            shape=ft.RoundedRectangleBorder(radius=8)),
                                                       height=35)
                                 ], alignment="spaceBetween")
-                            ]), bgcolor=CARD_COLOR, padding=15, border_radius=15,
+                            ]),
+                            bgcolor=CARD_COLOR, padding=15, border_radius=15,
                         )
                         lv_results.controls.append(card)
+
             except Exception as err:
                 show_error_dialog(str(err))
             finally:
@@ -303,6 +393,7 @@ def main(page: ft.Page):
         if len(my_wishlist) >= 50:
             send_app_notification("알림", "찜 목록은 최대 50개까지만 가능합니다.")
             return
+
         target_price_field = ft.TextField(label="목표 가격", value=str(item['price']), text_align="right",
                                           border_color=ACCENT_COLOR)
 
@@ -312,20 +403,23 @@ def main(page: ft.Page):
             my_wishlist.append(new_item)
             save_data()
             page.close(dlg_zzim)
-            send_app_notification("찜 등록 완료", f"'{item['title'][:10]}...' 등록됨")
+
+            send_app_notification("찜 등록 완료", f"'{item['title'][:10]}...' 감시 시작")
             refresh_wishlist_tab()
 
-        dlg_zzim = ft.AlertDialog(modal=True, bgcolor=CARD_COLOR,
-                                  title=ft.Text("알림 설정", color=TEXT_COLOR, font_family="NotoSansKR-Bold"),
-                                  content=ft.Column([ft.Text(f"상품: {item['title']}", size=12, color=SUB_TEXT_COLOR,
-                                                             font_family="NotoSansKR"), ft.Divider(color="#444"),
-                                                     target_price_field,
-                                                     ft.Text("이 가격 이하가 되면 알림을 보냅니다.", size=12, color=SUB_TEXT_COLOR,
-                                                             font_family="NotoSansKR")], height=150, width=300),
-                                  actions=[ft.TextButton("취소", on_click=lambda e: page.close(dlg_zzim),
-                                                         style=ft.ButtonStyle(color=SUB_TEXT_COLOR)),
-                                           ft.ElevatedButton("저장", on_click=save_zzim, bgcolor=ACCENT_COLOR,
-                                                             color="white")])
+        dlg_zzim = ft.AlertDialog(
+            modal=True, bgcolor=CARD_COLOR,
+            title=ft.Text("알림 설정", color=TEXT_COLOR, font_family="NotoSansKR-Bold"),
+            content=ft.Column([
+                ft.Text(f"상품: {item['title']}", size=12, color=SUB_TEXT_COLOR, font_family="NotoSansKR"),
+                ft.Divider(color="#444"),
+                target_price_field,
+                ft.Text("이 가격 이하가 되면 알림을 보냅니다.", size=12, color=SUB_TEXT_COLOR, font_family="NotoSansKR")
+            ], height=150, width=300),
+            actions=[ft.TextButton("취소", on_click=lambda e: page.close(dlg_zzim),
+                                   style=ft.ButtonStyle(color=SUB_TEXT_COLOR)),
+                     ft.ElevatedButton("저장", on_click=save_zzim, bgcolor=ACCENT_COLOR, color="white")]
+        )
         page.open(dlg_zzim)
 
     # --- 찜 목록 탭 ---
@@ -333,75 +427,99 @@ def main(page: ft.Page):
 
     def refresh_wishlist_tab():
         lv_wishlist_tab.controls.clear()
-        lv_wishlist_tab.controls.append(ft.Container(content=ft.Row(
-            [ft.Text(f"내 찜 목록", color=ACCENT_COLOR, weight="bold", font_family="NotoSansKR-Bold"),
-             ft.Text(f"({len(my_wishlist)} / 50)", color=TEXT_COLOR, font_family="NotoSansKR")],
-            alignment="spaceBetween"), padding=10, border=ft.border.only(bottom=ft.border.BorderSide(1, "#333"))))
-        if not my_wishlist: lv_wishlist_tab.controls.append(
-            ft.Container(content=ft.Text("찜한 상품이 없어요.", color=SUB_TEXT_COLOR, font_family="NotoSansKR"),
-                         alignment=ft.alignment.center, padding=50))
+
+        lv_wishlist_tab.controls.append(
+            ft.Container(
+                content=ft.Row([
+                    ft.Text(f"내 찜 목록", color=ACCENT_COLOR, weight="bold", font_family="NotoSansKR-Bold"),
+                    ft.Text(f"({len(my_wishlist)} / 50)", color=TEXT_COLOR, font_family="NotoSansKR")
+                ], alignment="spaceBetween"),
+                padding=10,
+                border=ft.border.only(bottom=ft.border.BorderSide(1, "#333"))
+            )
+        )
+
+        if not my_wishlist:
+            lv_wishlist_tab.controls.append(
+                ft.Container(content=ft.Text("찜한 상품이 없어요.", color=SUB_TEXT_COLOR, font_family="NotoSansKR"),
+                             alignment=ft.alignment.center, padding=50))
+
         for idx, item in enumerate(my_wishlist):
-            lv_wishlist_tab.controls.append(ft.Container(content=ft.Row([ft.Column([ft.Text(item['title'], width=200,
-                                                                                            max_lines=1,
-                                                                                            overflow="ellipsis",
-                                                                                            weight="bold",
-                                                                                            font_family="NotoSansKR"),
-                                                                                    ft.Text(f"현재: {item['price']:,}원",
-                                                                                            color=SUB_TEXT_COLOR,
-                                                                                            size=12,
-                                                                                            font_family="NotoSansKR"),
-                                                                                    ft.Text(
-                                                                                        f"목표: {item['target_price']:,}원",
-                                                                                        color=ACCENT_COLOR, size=12,
-                                                                                        weight="bold",
-                                                                                        font_family="NotoSansKR-Bold")]),
-                                                                         ft.IconButton(icon="delete", icon_color="grey",
-                                                                                       on_click=lambda e,
-                                                                                                       i=idx: delete_wishlist(
-                                                                                           i))],
-                                                                        alignment="spaceBetween"), bgcolor=CARD_COLOR,
-                                                         padding=15, border_radius=15))
+            lv_wishlist_tab.controls.append(
+                ft.Container(
+                    content=ft.Row([
+                        ft.Column([
+                            ft.Text(item['title'], width=200, max_lines=1, overflow="ellipsis", weight="bold",
+                                    font_family="NotoSansKR"),
+                            ft.Text(f"현재: {item['price']:,}원", color=SUB_TEXT_COLOR, size=12, font_family="NotoSansKR"),
+                            ft.Text(f"목표: {item['target_price']:,}원", color=ACCENT_COLOR, size=12, weight="bold",
+                                    font_family="NotoSansKR-Bold")
+                        ]),
+                        ft.IconButton(icon="delete", icon_color="grey", on_click=lambda e, i=idx: delete_wishlist(i))
+                    ], alignment="spaceBetween"),
+                    bgcolor=CARD_COLOR, padding=15, border_radius=15
+                )
+            )
         page.update()
 
     def delete_wishlist(index):
-        del my_wishlist[index]; save_data(); refresh_wishlist_tab()
+        del my_wishlist[index]
+        save_data()
+        refresh_wishlist_tab()
 
     # --- 설정 탭 ---
     def reset_all(e):
-        my_wishlist.clear(); save_data(); refresh_wishlist_tab(); send_app_notification("초기화 완료", "모든 찜 목록이 삭제되었습니다.")
+        my_wishlist.clear()
+        save_data()
+        refresh_wishlist_tab()
+        send_app_notification("초기화 완료", "모든 찜 목록이 삭제되었습니다.")
 
-    settings_view = ft.Container(content=ft.Column(
-        [ft.Text("앱 설정", size=18, weight="bold", color=TEXT_COLOR, font_family="NotoSansKR-Bold"),
-         ft.Divider(color="#444"), ft.ListTile(leading=ft.Icon(name="delete_forever", color=ERROR_COLOR),
-                                               title=ft.Text("데이터 초기화", color=TEXT_COLOR),
-                                               subtitle=ft.Text("찜 목록을 모두 삭제합니다.", color=SUB_TEXT_COLOR),
-                                               on_click=reset_all), ft.Container(height=20),
-         ft.Text("Version 1.1.0 (Auto-Collapse)", size=12, color="grey")], spacing=10), padding=20)
+    settings_view = ft.Container(
+        content=ft.Column([
+            ft.Text("앱 설정", size=18, weight="bold", color=TEXT_COLOR, font_family="NotoSansKR-Bold"),
+            ft.Divider(color="#444"),
+            ft.ListTile(
+                leading=ft.Icon(name="delete_forever", color=ERROR_COLOR),
+                title=ft.Text("데이터 초기화", color=TEXT_COLOR),
+                subtitle=ft.Text("찜 목록을 모두 삭제합니다.", color=SUB_TEXT_COLOR),
+                on_click=reset_all
+            ),
+            ft.Container(height=20),
+            ft.Text("Version 1.2.0 (Auto-Monitor Active)", size=12, color="grey")
+        ], spacing=10),
+        padding=20
+    )
 
     # --- 메인 탭바 ---
-    tabs = ft.Tabs(selected_index=0, divider_color="transparent", indicator_color=ACCENT_COLOR,
-                   label_color=ACCENT_COLOR, unselected_label_color="grey",
-                   tabs=[ft.Tab(icon="search", text="검색"), ft.Tab(icon="favorite", text="찜 목록"),
-                         ft.Tab(icon="settings", text="설정")], on_change=lambda e: refresh_wishlist_tab())
+    tabs = ft.Tabs(
+        selected_index=0, divider_color="transparent", indicator_color=ACCENT_COLOR, label_color=ACCENT_COLOR,
+        unselected_label_color="grey",
+        tabs=[ft.Tab(icon="search", text="검색"), ft.Tab(icon="favorite", text="찜 목록"),
+              ft.Tab(icon="settings", text="설정")],
+        on_change=lambda e: refresh_wishlist_tab() if e.control.selected_index == 1 else None
+    )
+
     content_area = ft.Container(expand=True)
 
     def on_tab_click(e):
         idx = tabs.selected_index
         content_area.content = [
-            ft.Container(content=ft.Column([
-                # [수정] 헤더 -> 입력창 -> 결과창 순서
-                ft.Container(content=search_header_row, padding=10),
-                ft.Container(content=search_inputs_container, padding=20),
-                lv_results
-            ])),
-            lv_wishlist_tab, settings_view
+            ft.Container(content=ft.Column([search_accordion, lv_results])),
+            lv_wishlist_tab,
+            settings_view
         ][idx]
         page.update()
 
     tabs.on_change = on_tab_click
-    page.add(ft.Stack([ft.Column(
-        [header, ft.Container(content=tabs, bgcolor=BG_COLOR), ft.Divider(height=1, color="#333"), content_area],
-        expand=True), loading_overlay], expand=True))
+
+    page.add(
+        ft.Stack([
+            ft.Column([header, ft.Container(content=tabs, bgcolor=BG_COLOR), ft.Divider(height=1, color="#333"),
+                       content_area], expand=True),
+            loading_overlay
+        ], expand=True)
+    )
+
     on_tab_click(None)
     refresh_wishlist_tab()
 
