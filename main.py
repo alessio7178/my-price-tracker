@@ -350,7 +350,7 @@ def main(page: ft.Page):
                         content=ft.Text("조건에 맞는 상품이 없습니다.", color=SUB_TEXT_COLOR, font_family="NotoSansKR"),
                         alignment=ft.alignment.center, padding=50))
                 else:
-                    show_message(f"{len(collected)}개의 최저가를 찾았습니다!", bgcolor=ACCENT_COLOR)
+                    send_app_notification("검색 완료", f"{len(collected)}개의 최저가를 찾았습니다!")
                     for idx, item in enumerate(collected[:10]):
                         card = ft.Container(
                             content=ft.Column([
@@ -473,7 +473,7 @@ def main(page: ft.Page):
         my_wishlist.clear()
         save_data()
         refresh_wishlist_tab()
-        show_message("모든 찜 목록이 삭제되었습니다.", bgcolor=ACCENT_COLOR)
+        send_app_notification("초기화 완료", "모든 찜 목록이 삭제되었습니다.")
 
     settings_view = ft.Container(
         content=ft.Column([
@@ -486,7 +486,7 @@ def main(page: ft.Page):
                 on_click=reset_all
             ),
             ft.Container(height=20),
-            ft.Text("Version 1.4.1 (Final Fixed)", size=12, color="grey")
+            ft.Text("Version 1.6.1 (Notification Loop)", size=12, color="grey")
         ], spacing=10),
         padding=20
     )
@@ -506,6 +506,7 @@ def main(page: ft.Page):
         idx = tabs.selected_index
         content_area.content = [
             ft.Container(content=ft.Column([
+                # 헤더 -> 토글 가능한 입력창 -> 결과 리스트
                 search_header_row,
                 search_inputs_container,
                 lv_results
@@ -524,6 +525,7 @@ def main(page: ft.Page):
             loading_overlay
         ], expand=True)
     )
+
     on_tab_click(None)
     refresh_wishlist_tab()
 
