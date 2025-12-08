@@ -31,18 +31,35 @@ jobs:
         with:
           channel: 'stable'
           
-      # 5. 라이브러리 설치
       - name: Install Dependencies
         run: |
           pip install -r requirements.txt
           pip install flet
 
-      # 6. [정석 빌드] 복잡한 옵션 다 빼고 가장 기본 명령어로 빌드합니다.
+      # 5. [핵심] 템플릿 다운로드 및 권한 강제 주입
+      # 템플릿 구조가 복잡해도 'find'로 Manifest 파일을 찾아내서 권한을 꽂아 넣습니다.
+      - name: Prepare Template with Permissions
+        run: |
+          # 1. 템플릿 다운로드
+          git clone https://github.com/flet-dev/flet-build-template.git my_template
+          
+          # 2. 주입할 권한 목록 (알림, 진동, 화면유지, 서비스)
+          PERMS='<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n    <uses-permission android:name="android.permission.WAKE_LOCK" />\n    <uses-permission android:name="android.permission.VIBRATE" />\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />'
+          
+          # 3. AndroidManifest.xml 파일을 찾아서 권한 주입
+          find my_template -name "AndroidManifest.xml" -exec sed -i "s|<application|$PERMS\n    <application|g" {} +
+          
+          # 4. 확인용 출력 (로그에서 확인 가능)
+          echo "✅ 권한 주입 완료! 변경된 내용 확인:"
+          find my_template -name "AndroidManifest.xml" -exec grep "uses-permission" {} +
+
+      # 6. 수정된 템플릿으로 APK 빌드
+      # --template my_template 옵션으로 우리가 수정한 버전을 사용합니다.
       - name: Flet Build APK
         run: |
-          flet build apk --verbose
+          flet build apk --template my_template --org com.myprice.tracker --verbose
 
-      # 7. 빌드된 APK 파일을 찾아서 artifacts 폴더로 복사 (경로 에러 방지)
+      # 7. 빌드된 파일 복사 (경로 에러 방지용 안전 장치)
       - name: Locate and Copy APK
         run: |
           mkdir -p artifacts
@@ -52,5 +69,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: MyPriceApp_Final
+          name: MyPriceApp_Permission_Fixed
           path: artifacts/*.apk
