@@ -9,54 +9,46 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      # 1. 코드 가져오기
       - uses: actions/checkout@v4
 
-      # 2. 파이썬 설치
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      # 3. 자바 설치
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
 
-      # 4. 플러터 설치
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
 
-      # 5. 라이선스 동의
       - name: Accept Android licenses
         run: |
           yes | flutter doctor --android-licenses
           
-      # 6. 라이브러리 설치
       - name: Install Dependencies
         run: |
           pip install -r requirements.txt
           pip install flet
 
-      # 7. APK 빌드
+      # [핵심 수정] 앱 ID를 변경하여 새로운 앱으로 인식시킴
+      # org: com.myprice -> 앱 ID가 'com.myprice.tracker'로 바뀜
       - name: Flet Build APK
         run: |
-          flet build apk --verbose
+          flet build apk --org com.myprice --project-name tracker --verbose
 
-      # 8. [수정됨] APK 파일 찾아서 복사 (경로 변경: build/apk)
       - name: Copy APK to artifacts folder
         run: |
           mkdir -p artifacts
-          # Flet이 최종적으로 옮겨둔 build/apk 폴더를 찾아봅니다.
           find build/apk -name "*.apk" -exec cp {} artifacts/ \;
 
-      # 9. 결과물 업로드
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: MyPriceApp
+          name: MyPriceApp_NewID
           path: artifacts/*.apk
