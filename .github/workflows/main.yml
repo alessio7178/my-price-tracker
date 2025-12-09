@@ -27,22 +27,22 @@ jobs:
         with:
           channel: 'stable'
 
-      # [1단계] 앱 템플릿 다운로드
+      # [1단계] 템플릿 다운로드 (권한 주입을 위해 필요)
       - name: Clone Template
         run: |
           git clone https://github.com/flet-dev/flet-build-template.git my_template
 
-      # [2단계] 권한 강제 주입 (파일 위치를 찾아서 정확히 넣음)
+      # [2단계] 권한 강제 주입 (알림, 진동, 화면유지, 서비스, 인터넷)
+      # find 명령어로 AndroidManifest.xml 위치를 찾아 정확히 주입합니다.
       - name: Inject Permissions
         run: |
-          # 권한 목록 정의 (알림, 진동, 화면유지, 서비스, 인터넷)
           PERMS='<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n    <uses-permission android:name="android.permission.WAKE_LOCK" />\n    <uses-permission android:name="android.permission.VIBRATE" />\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />\n    <uses-permission android:name="android.permission.INTERNET" />'
           
-          # AndroidManifest.xml 파일을 찾아서 <application> 태그 바로 윗줄에 권한을 삽입
+          # 파일 찾아서 권한 넣기
           find my_template -name "AndroidManifest.xml" -exec sed -i "s|<application|$PERMS\n    <application|g" {} +
           
           # 확인용 출력
-          echo "✅ 권한 주입 확인:"
+          echo "Checking permissions..."
           find my_template -name "AndroidManifest.xml" -exec grep "uses-permission" {} +
 
       - name: Install Dependencies
@@ -50,12 +50,13 @@ jobs:
           pip install -r requirements.txt
           pip install flet
 
-      # [3단계] 신분 세탁 빌드 (새로운 ID: com.final.tracker)
+      # [3단계] 앱 빌드 (오류 났던 --project-name 삭제)
+      # --org com.final 설정으로 앱 ID가 'com.final.main' 등으로 변경되어 새로운 앱으로 인식됩니다.
       - name: Flet Build APK
         run: |
-          flet build apk --template my_template --org com.final --project-name tracker --verbose
+          flet build apk --template my_template --org com.final --verbose
 
-      # [4단계] 결과물 복사
+      # [4단계] 결과물 찾아서 복사
       - name: Copy APK
         run: |
           mkdir -p artifacts
@@ -64,5 +65,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: MyPriceApp_Final_V2
+          name: MyPriceApp_Final_Fixed
           path: artifacts/*.apk
