@@ -9,56 +9,56 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
+      # 1. 코드 가져오기
       - uses: actions/checkout@v4
 
-      # 1. 자바 설치 (안드로이드 빌드 필수)
+      # 2. 파이썬 & 자바 & 플러터 세팅 (표준)
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
 
-      # 2. 파이썬 설치
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      # 3. 플러터 설치
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
 
-      # 4. [핵심] 라이선스 파일 강제 생성 (동의 절차 생략)
-      # 질문을 듣지 않고, 미리 서명된 파일을 폴더에 집어넣습니다.
-      - name: Force Accept Android Licenses
+      # 3. 라이선스 동의 (가장 단순하고 확실한 방법)
+      - name: Accept Licenses
         run: |
-          mkdir -p $ANDROID_HOME/licenses
-          echo "24333f8a63b6825ea9c5514f83c2829b004d1fee" > $ANDROID_HOME/licenses/android-sdk-license
-          echo "d56f5187479451eabf01fb78af6dfcb131a6481e" >> $ANDROID_HOME/licenses/android-sdk-license
-          echo "84831b9409646a918e30573bab4c9c91346d8abd" > $ANDROID_HOME/licenses/android-sdk-preview-license
-          
-      # 5. 라이브러리 설치
+          yes | flutter doctor --android-licenses
+
+      # 4. 필수 패키지 설치
       - name: Install Dependencies
         run: |
           pip install -r requirements.txt
           pip install flet
 
-      # 6. APK 빌드
+      # 5. APK 빌드 (복잡한 옵션 제거 -> 기본으로 돌아감)
+      # Flet이 알아서 내부적으로 템플릿을 만들고 빌드합니다.
       - name: Flet Build APK
         run: |
           flet build apk --verbose
 
-      # 7. 파일 찾기 및 복사
+      # 6. [필살기] APK 파일 발굴 및 복사
+      # 경로가 어디든 상관없이 .apk로 끝나는 파일을 찾아서 artifacts 폴더로 가져옵니다.
       - name: Locate and Copy APK
         run: |
           mkdir -p artifacts
+          echo "APK 파일을 찾습니다..."
           find . -name "*.apk" -type f -exec cp {} artifacts/ \;
+          echo "복사된 파일 목록:"
+          ls -R artifacts/
 
-      # 8. 업로드
+      # 7. 업로드
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: MyPriceApp_Signed
+          name: MyPriceApp_Final_Real
           path: artifacts/*.apk
